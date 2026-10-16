@@ -5,7 +5,7 @@ export const STRINGS = {
   A: { midi: 69, tension: 55, color: '#387c78' },
   E: { midi: 76, tension: 70, color: '#6778a8' },
 };
-export const DEFAULT = Object.freeze({string:'D', semitone:0, distance:32, speed:10, force:35, length:328, tension:45, friction:.52, resistance:10, fingerLoss:2, bodyLoss:1, lock:'mm'});
+export const DEFAULT = Object.freeze({string:'D', semitone:0, distance:32, speed:10, force:35, length:328, tension:45, friction:.52, resistance:10, fingerLoss:2, bodyLoss:1, lock:'mm',keepPitch:false});
 export const GF = .00980665;
 const clamp = (x,a,b) => Math.min(b, Math.max(a,x));
 export function sanitize(input={}) {
@@ -16,6 +16,7 @@ export function sanitize(input={}) {
   s.semitone=Math.round(s.semitone);
   s.distance=Math.min(s.distance,s.length*2**(-s.semitone/12)*.45);
   s.lock=input.lock==='ratio'?'ratio':'mm';
+  s.keepPitch=input.keepPitch===true||input.keepPitch==='true';
   return s;
 }
 export function calculate(input) {
@@ -33,6 +34,12 @@ export function changePitch(input,semitone) {
   const before=calculate(input), s={...before,semitone};
   if(s.lock==='ratio') s.distance=before.beta*s.length*2**(-semitone/12);
   return sanitize(s);
+}
+export function changeString(input,string) {
+  if(!Object.hasOwn(STRINGS,string))return sanitize(input);
+  const s=sanitize(input),semitone=s.keepPitch?STRINGS[s.string].midi+s.semitone-STRINGS[string].midi:s.semitone;
+  if(semitone<0||semitone>24)return s;
+  return {...changePitch(s,semitone),string,tension:STRINGS[string].tension};
 }
 export function noteName(input) {
   const midi=STRINGS[input.string].midi+input.semitone, names=['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
