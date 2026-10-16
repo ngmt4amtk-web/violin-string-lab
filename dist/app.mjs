@@ -1,4 +1,4 @@
-import {STRINGS,DEFAULT,PRESETS,calculate,sanitize,changePitch,noteName,encode,decode} from './model.mjs';
+import {STRINGS,DEFAULT,PRESETS,calculate,sanitize,changePitch,changeString,noteName,encode,decode} from './model.mjs?v=20261016.2';
 const $=id=>document.getElementById(id), COLORS={ink:'#25382f',muted:'#68736a',grid:'#dcded3',green:'#2b6651',gs:'#d5e8d8',orange:'#b17727',os:'#f2e4c5',red:'#ae5c4d',rs:'#efd3ca',paper:'#fffef9'};
 const STATES={stable:['規則的に鳴る範囲','つかんで運び、1周期に1回すべる振動が成立しうる条件です。'],light:['スカスカ側','力が下の境目より小さい条件。余分なすべりが生じうる側です。'],heavy:['ギー側','力が上の境目より大きい条件。規則的なすべりを保てなくなる側です。'],none:['緑の帯がない','下の境目が上の境目に達し、この模型では成立範囲がありません。'],stopped:['弓が止まっています','定常音の模型では判定しません。弓の速さを上げると帯が現れます。']};
 let state=location.hash.includes('string=')?decode(location.hash):{...DEFAULT}, model=calculate(state), saved=null;
@@ -38,7 +38,8 @@ function syncControls(){
  for(const k of ['distance','speed','force'])$(k+'-number').value=Math.round(state[k]*10)/10;
  $('force').value=1000*Math.log1p(state.force)/Math.log(1001);
  document.querySelectorAll('input[type="range"]').forEach(el=>el.style.setProperty('--fill',`${100*(Number(el.value)-Number(el.min))/(Number(el.max)-Number(el.min))}%`));
- document.querySelectorAll('[data-string]').forEach(el=>el.setAttribute('aria-pressed',el.dataset.string===state.string));
+ document.querySelectorAll('[data-string]').forEach(el=>{el.setAttribute('aria-pressed',el.dataset.string===state.string);const st=STRINGS[state.string].midi+state.semitone-STRINGS[el.dataset.string].midi;el.disabled=state.keepPitch&&(st<0||st>24);});
+ if($('keep-pitch'))$('keep-pitch').checked=state.keepPitch;
  document.querySelectorAll('[data-pitch]').forEach(el=>el.classList.toggle('active',Number(el.dataset.pitch)===state.semitone));
  document.querySelectorAll('[name="lock"]').forEach(el=>el.checked=el.value===state.lock);
  $('pitch-output').textContent=state.semitone===0?'開放弦':`${noteName(state)} / +${state.semitone}半音`;
@@ -48,6 +49,7 @@ function syncControls(){
  $('friction-output').textContent=fmt(state.friction,2);$('bodyLoss-output').textContent=`${fmt(state.bodyLoss)} 倍`;$('length-output-control').textContent=`${fmt(state.length)} mm`;$('resistance-output').textContent=`${fmt(state.resistance)} N·s/m`;
  $('center-force').disabled=['none','stopped'].includes(model.state)||model.minimum>1000;
 }
+let spokenTimer;
 function render(){
  state=sanitize(state);model=calculate(state);syncControls();
  document.querySelector('.overview').dataset.state=model.state;$('note-badge').textContent=noteName(state);
@@ -58,6 +60,7 @@ function render(){
  const cautions=[];if(model.beta>.2)cautions.push('駒から弦長の20%を超えています。駒に近い前提の近似から離れるため、数値の読み取りには注意が必要です。');if(model.effectiveR/model.z<10)cautions.push('損失を大きくした条件です。胴の抵抗が弦より十分大きいという近似が弱くなります。');
  $('scope-note').hidden=!cautions.length;$('scope-note').textContent=cautions.join(' ');
  drawString();drawMap();drawCompare();updatePlay();updateMonitor();
+ clearTimeout(spokenTimer);spokenTimer=setTimeout(()=>{if(!$('spoken-state'))return;$('spoken-state').textContent=`${STATES[model.state][0]}。${model.state==='stopped'?'':`下の境目${gf(model.minimum)}、上の境目${gf(model.maximum)}グラム重。`}`;},350);
 }
 let motionNodes={};
 function drawString(){
@@ -121,8 +124,8 @@ function drawMap(){
 function drawCompare(){
  $('compare-empty').hidden=!!saved;$('compare-content').hidden=!saved;$('clear-a').hidden=!saved;if(!saved)return;
  const a=calculate(saved),scale=domain([a,model]);
- $('comparison-rows').innerHTML=[['A',a],['B',model]].map(([name,m])=>`<div class="comparison-row"><div><h3>${name}</h3><span class="chart-note">${name==='A'?'保存した条件':'今の条件'}</span></div><div><p class="comparison-condition">${m.string}弦 · ${noteName(m)} · ${fmt(m.distance)} mm · ${fmt(m.speed)} cm/秒 · ${gf(m.force)} gf</p><div>${bandSVG(m,width()===360?290:530,scale)}</div><p class="comparison-values">${STATES[m.state][0]}${m.state==='stopped'?'':` / 下 ${gf(m.minimum)}〜上 ${gf(m.maximum)} gf`}</p></div></div>`).join('');
- const names={string:'弦',semitone:'音高',distance:'距離',speed:'弓速',force:'弓の力',length:'開放弦長',tension:'張力',friction:'摩擦差',resistance:'基準抵抗',fingerLoss:'押弦の損失',bodyLoss:'楽器の損失',lock:'距離の保ち方'};
+ $('comparison-rows').innerHTML=[['A',a],['B',model]].map(([name,m])=>`<div class="comparison-row"><div><h3>${name}</h3><span class="chart-note">${name==='A'?'保存':'現在'}</span></div><div><p class="comparison-condition">${m.string}弦 · ${noteName(m)} · ${fmt(m.distance)} mm · ${fmt(m.speed)} cm/秒 · ${gf(m.force)} gf</p><div>${bandSVG(m,width()===360?290:530,scale)}</div><p class="comparison-values">${STATES[m.state][0]}${m.state==='stopped'?'':` / 下 ${gf(m.minimum)}〜上 ${gf(m.maximum)} gf`}</p></div></div>`).join('');
+ const names={string:'弦',semitone:'開放からの半音数',distance:'距離',speed:'弓速',force:'弓の力',length:'開放弦長',tension:'張力',friction:'摩擦差',resistance:'基準抵抗',fingerLoss:'押弦の損失',bodyLoss:'楽器の損失',lock:'距離の保ち方',keepPitch:'同じ音高を保つ設定'};
  const changed=Object.keys(DEFAULT).filter(k=>saved[k]!==state[k]).map(k=>names[k]);
  $('comparison-note').textContent=changed.length?`変わった条件：${changed.join('・')}。AとBの帯は共通の目盛りです。地図のAは距離と力だけの位置を示します。`:'AとBは同じ条件です。条件を一つ動かしてみましょう。';
 }
@@ -131,7 +134,8 @@ for(const key of ['distance','speed','tension','fingerLoss','friction','bodyLoss
 $('semitone').addEventListener('input',e=>set(changePitch(state,Number(e.target.value))));
 $('force').addEventListener('input',e=>set({...state,force:Math.expm1(Number(e.target.value)/1000*Math.log(1001))}));
 for(const key of ['distance','speed','force'])$(key+'-number').addEventListener('change',e=>set({...state,[key]:Number.isFinite(e.target.valueAsNumber)?e.target.valueAsNumber:state[key]}));
-document.querySelectorAll('[data-string]').forEach(el=>el.addEventListener('click',()=>set({...state,string:el.dataset.string,tension:STRINGS[el.dataset.string].tension})));
+document.querySelectorAll('[data-string]').forEach(el=>el.addEventListener('click',()=>set(changeString(state,el.dataset.string))));
+$('keep-pitch')?.addEventListener('change',e=>set({...state,keepPitch:e.target.checked}));
 document.querySelectorAll('[data-pitch]').forEach(el=>el.addEventListener('click',()=>set(changePitch(state,Number(el.dataset.pitch)))));
 document.querySelectorAll('[name="lock"]').forEach(el=>el.addEventListener('change',()=>set({...state,lock:el.value})));
 document.querySelectorAll('[data-preset]').forEach(el=>el.addEventListener('click',()=>{set(PRESETS[el.dataset.preset]);document.querySelector('.overview').scrollIntoView({behavior:reduced.matches?'auto':'smooth',block:'start'});}));
