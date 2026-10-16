@@ -1,16 +1,16 @@
-import {STRINGS,DEFAULT,PRESETS,calculate,sanitize,changePitch,changeString,noteName,encode,decode} from './model.mjs?v=20261016.2';
+import {STRINGS,DEFAULT,PRESETS,calculate,sanitize,changePitch,changeString,noteName,encode,decode} from './model.mjs?v=20261016.3';
 const $=id=>document.getElementById(id), COLORS={ink:'#25382f',muted:'#68736a',grid:'#dcded3',green:'#2b6651',gs:'#d5e8d8',orange:'#b17727',os:'#f2e4c5',red:'#ae5c4d',rs:'#efd3ca',paper:'#fffef9'};
 const STATES={stable:['規則的に鳴る範囲','つかんで運び、1周期に1回すべる振動が成立しうる条件です。'],light:['スカスカ側','力が下の境目より小さい条件。余分なすべりが生じうる側です。'],heavy:['ギー側','力が上の境目より大きい条件。規則的なすべりを保てなくなる側です。'],none:['緑の帯がない','下の境目が上の境目に達し、この模型では成立範囲がありません。'],stopped:['弓が止まっています','定常音の模型では判定しません。弓の速さを上げると帯が現れます。']};
 let state=location.hash.includes('string=')?decode(location.hash):{...DEFAULT}, model=calculate(state), saved=null;
 try{const item=JSON.parse(localStorage.getItem('string-lab-a'));if(item?.version===1)saved=sanitize(item.state);}catch{}
-const reduced=matchMedia('(prefers-reduced-motion: reduce)');let playing=!reduced.matches,phase=.14,lastTime=0,frame=0;
+const reduced=matchMedia('(prefers-reduced-motion: reduce)');let playing=!reduced.matches,phase=.14,lastTime=0,frame=0,motionMode='time';
 const fmt=(n,d=1)=>Number.isFinite(n)?n.toLocaleString('ja-JP',{maximumFractionDigits:d}):'—';
 const gf=n=>n>=1e6?`${Math.round(n/10000)}万`:n>=10000?`${fmt(n/10000,1)}万`:n<1?fmt(n,2):fmt(n,n<10?1:0);
 const width=()=>matchMedia('(max-width:670px)').matches?360:600;
 const svg=(w,h,body,label)=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="${label}" style="font-family:-apple-system,BlinkMacSystemFont,Helvetica Neue,sans-serif">${body}</svg>`;
 const txt=(x,y,text,size=12,anchor='start',fill=COLORS.muted,extra='')=>`<text x="${x}" y="${y}" font-size="${size}" text-anchor="${anchor}" fill="${fill}" ${extra}>${text}</text>`;
 const logPos=(n,min,max,a,b)=>a+(Math.log10(Math.max(min,n))-Math.log10(min))/(Math.log10(max)-Math.log10(min))*(b-a);
-function domain(ms){return [.1,10**Math.ceil(Math.log10(Math.max(1000,...ms.flatMap(m=>[m.minimum*1.3,m.maximum*1.3,m.force*1.3]))))];}
+function domain(){return [.1,1000];}
 function bandSVG(m,w=width(),scale=domain([m]),current=true){
  const h=112,l=14,r=w-14,y=31,bh=27,[lo,hi]=scale,x=n=>Math.min(r,Math.max(l,logPos(n,lo,hi,l,r)));
  let body='';
@@ -19,7 +19,7 @@ function bandSVG(m,w=width(),scale=domain([m]),current=true){
  else{
   const a=x(m.minimum),b=x(m.maximum);
   body+=`<rect x="${l}" y="${y}" width="${a-l}" height="${bh}" fill="${COLORS.os}"/><rect x="${a}" y="${y}" width="${b-a}" height="${bh}" fill="${COLORS.gs}"/><rect x="${b}" y="${y}" width="${r-b}" height="${bh}" fill="${COLORS.rs}"/>`;
-  body+=`<path d="M${a} ${y-3}v${bh+6}M${b} ${y-3}v${bh+6}" stroke="${COLORS.ink}" stroke-width="1.5"/>`;
+  body+=`<path d="M${a} ${y-3}v${bh+6}M${b} ${y-3}v${bh+6}" stroke="${COLORS.ink}" stroke-width="1.5" ${m.beta>.2?'stroke-dasharray="3 3"':''}/>`;
   if(a-l>50)body+=txt((l+a)/2,y+18,'スカスカ',11,'middle',COLORS.orange);
   if(b-a>40)body+=txt((a+b)/2,y+18,'成立',11,'middle',COLORS.green);
   if(r-b>35)body+=txt((b+r)/2,y+18,'ギー',11,'middle',COLORS.red);
@@ -34,7 +34,7 @@ function advice(m){
 }
 function syncControls(){
  const maxDistance=Math.min(65,model.vibratingLength*.45);$('distance').max=maxDistance.toFixed(6);$('distance-number').max=maxDistance.toFixed(6);
- for(const key of ['semitone','distance','speed','tension','fingerLoss','friction','bodyLoss','length','resistance']){$(key).value=state[key];}
+ for(const key of ['semitone','distance','speed','tension','fingerLoss','friction','bodyLoss','length']){$(key).value=state[key];}
  for(const k of ['distance','speed','force'])$(k+'-number').value=Math.round(state[k]*10)/10;
  $('force').value=1000*Math.log1p(state.force)/Math.log(1001);
  document.querySelectorAll('input[type="range"]').forEach(el=>el.style.setProperty('--fill',`${100*(Number(el.value)-Number(el.min))/(Number(el.max)-Number(el.min))}%`));
@@ -45,6 +45,7 @@ function syncControls(){
  $('pitch-output').textContent=state.semitone===0?'開放弦':`${noteName(state)} / +${state.semitone}半音`;
  $('length-output').textContent=`振動する長さ ${fmt(model.vibratingLength)} mm · ${fmt(model.frequency)} Hz`;
  $('beta-output').textContent=`今は弦長の ${fmt(model.beta*100)}% の位置（β = ${fmt(model.beta,3)}）`;
+ if($('pitch-caution'))$('pitch-caution').hidden=state.semitone===0;
  $('tension-output').textContent=`${fmt(state.tension)} N`;$('fingerLoss-output').textContent=`${fmt(state.fingerLoss)} 倍${state.semitone===0?' / 開放には適用なし':''}`;
  $('friction-output').textContent=fmt(state.friction,2);$('bodyLoss-output').textContent=`${fmt(state.bodyLoss)} 倍`;$('length-output-control').textContent=`${fmt(state.length)} mm`;$('resistance-output').textContent=`${fmt(state.resistance)} N·s/m`;
  $('center-force').disabled=['none','stopped'].includes(model.state)||model.minimum>1000;
@@ -57,7 +58,8 @@ function render(){
  $('min-force').innerHTML=model.state==='stopped'?'—':`${gf(model.minimum)} <small>gf</small>`;
  $('max-force').innerHTML=model.state==='stopped'?'—':`${gf(model.maximum)} <small>gf</small>`;
  $('current-force').innerHTML=`${gf(state.force)} <small>gf</small>`;$('band').innerHTML=bandSVG(model);$('advice').textContent=advice(model);
- const cautions=[];if(model.beta>.2)cautions.push('駒から弦長の20%を超えています。駒に近い前提の近似から離れるため、数値の読み取りには注意が必要です。');if(model.effectiveR/model.z<10)cautions.push('損失を大きくした条件です。胴の抵抗が弦より十分大きいという近似が弱くなります。');
+ if($('window-ratio'))$('window-ratio').textContent=model.state==='stopped'?'':model.minimum>=model.maximum?'成立しうる幅なし':`帯の幅：上の境目は下の ${fmt(model.ratio,1)} 倍`;
+ const cautions=[];if(model.beta>.2)cautions.push('駒から弦長の20%を超えています。駒に近い前提の近似から離れるため、境目を点線で表示しています。');if(state.distance<10)cautions.push('駒にとても近い条件です。模型は弓が1点で触れると仮定していますが、実際には弓毛に幅があります。');if(model.effectiveR/model.z<10)cautions.push('損失を大きくした条件です。胴の抵抗が弦より十分大きいという近似が弱くなります。');if(model.maximum>1000||model.minimum<.1)cautions.push('境目の一部が固定目盛りの外にあります。値は上の数値欄を参照してください。');
  $('scope-note').hidden=!cautions.length;$('scope-note').textContent=cautions.join(' ');
  drawString();drawMap();drawCompare();updatePlay();updateMonitor();
  clearTimeout(spokenTimer);spokenTimer=setTimeout(()=>{if(!$('spoken-state'))return;$('spoken-state').textContent=`${STATES[model.state][0]}。${model.state==='stopped'?'':`下の境目${gf(model.minimum)}、上の境目${gf(model.maximum)}グラム重。`}`;},350);
@@ -80,38 +82,41 @@ function drawString(){
  $('motion-time').textContent=stable?`実際は毎秒 約${fmt(model.frequency,0)}周期`:'実測波形ではありません';
  $('stick-track').style.width=`${model.stick*100}%`;$('slip-track').style.width=`${model.slip*100}%`;
  document.querySelector('.phase-track').classList.toggle('muted',!stable);
- $('motion-description').textContent=stable?`つかむ時間 ${fmt(model.stick*100)}% / すべる時間 ${fmt(model.slip*100)}%。1周期を1.8秒に拡大しています。`:'帯の外では理想的な周期の説明を適用できません。動きは違いを見るための模式表現です。';
+ $('motion-description').textContent=stable?`つかむ時間 ${fmt(model.stick*100)}% / すべる時間 ${fmt(model.slip*100)}%。${motionMode==='time'?'時間を1000倍に引き伸ばしています。':'音高によらず1周期を1.8秒で表示しています。'} 理想模型の最大振幅は片側 約${fmt(model.amplitude,3)} mm。`:'帯の外では理想的な周期の説明を適用できません。静止した形は模式図で、振動を計算した結果ではありません。';
  animateString();
 }
 function animateString(){
  const n=motionNodes;if(!n.path)return;
- const p=(phase+model.beta/2)%1,xc=p<.5?p*2:2-p*2,sign=p<.5?1:-1,amp=Math.min(39,Math.max(12,model.amplitude*35));
+ const visualPhase=model.state==='stable'?phase:.14;
+ const p=(visualPhase+model.beta/2)%1,xc=p<.5?p*2:2-p*2,sign=p<.5?1:-1,amp=Math.min(39,model.amplitude*45);
  const points=[];
  for(let i=0;i<=100;i++){
   const q=i/100;let y=0;
   if(model.state==='stable')y=4*amp*sign*(q<=xc?q*(1-xc):xc*(1-q));
-  else if(model.state==='light')y=amp*.38*Math.sin(Math.PI*q)*Math.sin(phase*Math.PI*4-q*6)+amp*.15*Math.sin(2*Math.PI*q)*Math.sin(phase*Math.PI*8);
-  else if(model.state!=='stopped')y=amp*Math.sin(Math.PI*q)*(Math.sin(phase*2*Math.PI)*.7+Math.sin(phase*6*Math.PI+q*3)*.22);
+  else if(model.state==='light')y=14*Math.sin(Math.PI*q)*Math.sin(visualPhase*Math.PI*4-q*6)+5*Math.sin(2*Math.PI*q)*Math.sin(visualPhase*Math.PI*8);
+  else if(model.state!=='stopped')y=25*Math.sin(Math.PI*q)*(Math.sin(visualPhase*2*Math.PI)*.7+Math.sin(visualPhase*6*Math.PI+q*3)*.22);
   points.push(`${i?'L':'M'}${(n.left+n.active*q).toFixed(2)} ${(91-y).toFixed(2)}`);
  }
  n.path.setAttribute('d',points.join(' '));n.corner.style.display=model.state==='stable'?'':'none';n.corner.setAttribute('cx',n.left+n.active*xc);n.corner.setAttribute('cy',91-4*amp*sign*xc*(1-xc));
- n.dots.forEach((el,i)=>el.setAttribute('cy',model.state==='stopped'?52+i*16:50+((i*16+phase*80)%80)));
+ n.dots.forEach((el,i)=>el.setAttribute('cy',model.state!=='stable'?52+i*16:50+((i*16+phase*80)%80)));
 }
-function updatePlay(){$('play').textContent=playing?'一時停止':'動かす';$('play').setAttribute('aria-pressed',String(playing));if(playing&&!frame&&!document.hidden){lastTime=0;frame=requestAnimationFrame(tick);}}
-function tick(t){frame=0;if(!playing||document.hidden)return;if(lastTime&&model.state!=='stopped')phase=(phase+Math.min(.05,(t-lastTime)/1000)/1.8)%1;lastTime=t;animateString();frame=requestAnimationFrame(tick);}
+function updatePlay(){const can=model.state==='stable';$('play').disabled=!can;$('play').textContent=can?(playing?'一時停止':'動かす'):'静止の模式図';$('play').setAttribute('aria-pressed',String(playing&&can));if(playing&&can&&!frame&&!document.hidden){lastTime=0;frame=requestAnimationFrame(tick);}}
+function tick(t){frame=0;if(!playing||document.hidden||model.state!=='stable')return;if(lastTime)phase=(phase+Math.min(.05,(t-lastTime)/1000)*(motionMode==='time'?model.frequency/1000:1/1.8))%1;lastTime=t;animateString();frame=requestAnimationFrame(tick);}
 let mapGeom={};
 function drawMap(){
- const w=width(),h=w===360?264:285,l=45,r=w-15,t=21,b=h-43,dmax=Math.min(65,model.vibratingLength*.45),fmin=.1,fmax=1000;
+ const w=width(),h=w===360?264:285,l=45,r=w-15,t=21,b=h-43,dmax=65,allowedMax=Math.min(65,model.vibratingLength*.45),fmin=.1,fmax=1000;
  const x=d=>logPos(d,2,dmax,l,r),y=f=>logPos(f,fmin,fmax,b,t),boundedY=f=>Math.min(b,Math.max(t,y(f)));
  let body=`<defs><clipPath id="map-clip"><rect x="${l}" y="${t}" width="${r-l}" height="${b-t}" rx="3"/></clipPath></defs><rect x="${l}" y="${t}" width="${r-l}" height="${b-t}" fill="#f2f1e9"/>`;
- const samples=Array.from({length:101},(_,i)=>{const d=2*(dmax/2)**(i/100),m=calculate({...state,distance:d});return {x:x(d),a:boundedY(m.minimum),b:boundedY(m.maximum),m};});
+ const samples=Array.from({length:101},(_,i)=>{const d=2*(allowedMax/2)**(i/100),m=calculate({...state,distance:d});return {x:x(d),a:boundedY(m.minimum),b:boundedY(m.maximum),m};});
+ const activeRight=x(allowedMax);
  const path=(p)=>p.map((v,i)=>`${i?'L':'M'}${v[0].toFixed(2)},${v[1].toFixed(2)}`).join(' ');
  if(state.speed>0){
-  body+=`<g clip-path="url(#map-clip)"><path d="${path([[l,b],...samples.map(p=>[p.x,p.a]),[r,b]])}Z" fill="${COLORS.os}"/><path d="${path([[l,t],...samples.map(p=>[p.x,p.b]),[r,t]])}Z" fill="${COLORS.rs}"/>`;
+  body+=`<g clip-path="url(#map-clip)"><path d="${path([[l,b],...samples.map(p=>[p.x,p.a]),[activeRight,b]])}Z" fill="${COLORS.os}"/><path d="${path([[l,t],...samples.map(p=>[p.x,p.b]),[activeRight,t]])}Z" fill="${COLORS.rs}"/>`;
   const valid=samples.filter(p=>p.m.minimum<p.m.maximum);
   if(valid.length)body+=`<path d="${path([...valid.map(p=>[p.x,p.a]),...valid.toReversed().map(p=>[p.x,p.b])])}Z" fill="${COLORS.gs}"/>`;
-  body+=`<path d="${path(samples.map(p=>[p.x,p.a]))}" fill="none" stroke="${COLORS.orange}" stroke-width="1.6"/><path d="${path(samples.map(p=>[p.x,p.b]))}" fill="none" stroke="${COLORS.red}" stroke-width="1.6"/></g>`;
+  for(const which of ['a','b'])for(const outside of [false,true]){const segment=samples.filter(p=>(p.m.beta>.2)===outside);if(segment.length)body+=`<path d="${path(segment.map(p=>[p.x,p[which]]))}" fill="none" stroke="${which==='a'?COLORS.orange:COLORS.red}" stroke-width="1.6" ${outside?'stroke-dasharray="4 4"':''}/>`;}body+='</g>';
  }
+ if(allowedMax<65)body+=`<rect x="${activeRight}" y="${t}" width="${r-activeRight}" height="${b-t}" fill="#e1e3dc"/>`+txt((activeRight+r)/2,t+20,'設定外',10,'middle');
  for(const n of [.1,1,10,100,1000])body+=`<path d="M${l} ${y(n)}H${r}" stroke="${COLORS.ink}" stroke-opacity=".1"/>`+txt(l-8,y(n)+4,fmt(n),10,'end');
  for(const n of [2,5,10,20,40,65].filter(n=>n<=dmax))body+=`<path d="M${x(n)} ${t}V${b}" stroke="${COLORS.ink}" stroke-opacity=".1"/>`+txt(x(n),b+19,n,10,'middle');
  body+=txt(l,12,'弓の力 gf',10)+txt(r,h-4,'駒からの距離 mm',10,'end')+txt(l,h-4,'← 駒寄り',10);
@@ -130,7 +135,7 @@ function drawCompare(){
  $('comparison-note').textContent=changed.length?`変わった条件：${changed.join('・')}。AとBの帯は共通の目盛りです。地図のAは距離と力だけの位置を示します。`:'AとBは同じ条件です。条件を一つ動かしてみましょう。';
 }
 function set(next){state=sanitize(next);$('action-message').textContent='';render();}
-for(const key of ['distance','speed','tension','fingerLoss','friction','bodyLoss','length','resistance'])$(key).addEventListener('input',e=>set({...state,[key]:Number(e.target.value)}));
+for(const key of ['distance','speed','tension','fingerLoss','friction','bodyLoss','length'])$(key).addEventListener('input',e=>set({...state,[key]:Number(e.target.value)}));
 $('semitone').addEventListener('input',e=>set(changePitch(state,Number(e.target.value))));
 $('force').addEventListener('input',e=>set({...state,force:Math.expm1(Number(e.target.value)/1000*Math.log(1001))}));
 for(const key of ['distance','speed','force'])$(key+'-number').addEventListener('change',e=>set({...state,[key]:Number.isFinite(e.target.valueAsNumber)?e.target.valueAsNumber:state[key]}));
@@ -138,10 +143,11 @@ document.querySelectorAll('[data-string]').forEach(el=>el.addEventListener('clic
 $('keep-pitch')?.addEventListener('change',e=>set({...state,keepPitch:e.target.checked}));
 document.querySelectorAll('[data-pitch]').forEach(el=>el.addEventListener('click',()=>set(changePitch(state,Number(el.dataset.pitch)))));
 document.querySelectorAll('[name="lock"]').forEach(el=>el.addEventListener('change',()=>set({...state,lock:el.value})));
-document.querySelectorAll('[data-preset]').forEach(el=>el.addEventListener('click',()=>{set(PRESETS[el.dataset.preset]);document.querySelector('.overview').scrollIntoView({behavior:reduced.matches?'auto':'smooth',block:'start'});}));
+document.querySelectorAll('[data-preset]').forEach(el=>el.addEventListener('click',()=>{set(PRESETS[el.dataset.preset]);document.querySelector('.overview').scrollIntoView({behavior:'instant',block:'start'});}));
 $('reset').addEventListener('click',()=>{set(DEFAULT);history.replaceState(null,'',location.pathname+location.search);});
 $('center-force').addEventListener('click',()=>set({...state,force:Math.min(1000,Math.sqrt(model.minimum*model.maximum))}));
 $('play').addEventListener('click',()=>{playing=!playing;updatePlay();});
+$('motion-mode')?.addEventListener('change',e=>{motionMode=e.target.value;drawString();});
 document.addEventListener('visibilitychange',()=>{lastTime=0;updatePlay();});
 reduced.addEventListener('change',e=>{if(e.matches){playing=false;updatePlay();}});
 $('save-a').addEventListener('click',()=>{saved={...state};let persisted=true;try{localStorage.setItem('string-lab-a',JSON.stringify({version:1,state:saved}));}catch{persisted=false;}render();$('action-message').textContent=persisted?'Aに保存しました。条件を変えて比較できます。':'この画面のAに保存しました。ブラウザへの保存は利用できません。';});
@@ -160,8 +166,8 @@ $('export').addEventListener('click',async()=>{
   let body=`<rect width="${w}" height="${h}" fill="#f4f3eb"/>`+txt(65,75,'STRING LAB / 弦の鳴りかた',24,'start',COLORS.green,'font-weight="600"')+txt(65,137,STATES[m.state][0],37,'start',COLORS.ink);
   body+=txt(65,188,`${m.string}弦 · ${noteName(m)} · 駒から ${fmt(m.distance)} mm · 弓速 ${fmt(m.speed)} cm/秒`,23,'start',COLORS.ink);
   body+=`<g transform="translate(55 215) scale(1.65)">${bandSVG(m,600).replace(/^<svg[^>]*>/,'').replace(/<\/svg>$/,'')}</g>`;
-  const lines=[`下の境目 ${m.state==='stopped'?'—':gf(m.minimum)+' gf'} / 上の境目 ${m.state==='stopped'?'—':gf(m.maximum)+' gf'} / 今の力 ${gf(m.force)} gf`,`振動長 ${fmt(m.vibratingLength)} mm / 弦長に対する割合 ${fmt(m.beta*100)}%`,`張力 ${fmt(m.tension)} N / 摩擦差 ${fmt(m.friction,2)} / 基準抵抗 ${fmt(m.resistance)} N·s/m`,`押弦時の損失 ${fmt(m.fingerLoss)}倍 / 楽器側の損失 ${fmt(m.bodyLoss)}倍`,`定常音の理想模型。数値は教材仮定による計算値で、実測値ではありません。`,`緑の範囲内でも規則的な振動が保証されるわけではありません。`,`Schelleng model / Euphonics 9.3.1 / Schoonderwaldt et al. (2008)`];
-  lines.forEach((l,i)=>body+=txt(65,455+i*45,l,i>3?18:22,'start',i>3?COLORS.muted:COLORS.ink));
+  const lines=[`下の境目 ${m.state==='stopped'?'—':gf(m.minimum)+' gf'} / 上の境目 ${m.state==='stopped'?'—':gf(m.maximum)+' gf'} / 今の力 ${gf(m.force)} gf`,`振動長 ${fmt(m.vibratingLength)} mm / 弦長に対する割合 ${fmt(m.beta*100)}%`,`張力 ${fmt(m.tension)} N / 摩擦差 ${fmt(m.friction,2)} / 基準抵抗 ${fmt(m.resistance)} N·s/m`,`押弦時の損失 ${fmt(m.fingerLoss)}倍 / 楽器側の損失 ${fmt(m.bodyLoss)}倍`,`開放弦長 ${fmt(m.length)} mm / 音高変更時：${m.lock==='ratio'?'弦長の割合を保つ':'駒からの距離を保つ'}`,`String Lab 1.2 / Schelleng v1 / A4 = 440 Hz`,`定常音の理想模型。数値は教材仮定による計算値で、実測値ではありません。`,`緑の範囲内でも規則的な振動が保証されるわけではありません。`,`Schelleng model / Euphonics 9.3.1 / Schoonderwaldt et al. (2008)`];
+  lines.forEach((l,i)=>body+=txt(65,455+i*45,l,i>4?18:22,'start',i>4?COLORS.muted:COLORS.ink));
   const data=new Blob([svg(w,h,body,'弦の鳴りかた 現在の条件')],{type:'image/svg+xml;charset=utf-8'}),url=URL.createObjectURL(data),img=new Image();
   try{await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url;});const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0);const blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!blob)throw Error('画像を作成できません');const out=URL.createObjectURL(blob),a=document.createElement('a');a.href=out;a.download=`string-lab-${m.string}-${noteName(m).replace('♯','sharp')}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(out),30000);$('action-message').textContent='現在の条件と図をPNGで書き出しました。';}finally{URL.revokeObjectURL(url);}
  }catch{$('action-message').textContent='このブラウザでは画像保存に失敗しました。条件のリンクをご利用ください。';}finally{button.disabled=false;}
