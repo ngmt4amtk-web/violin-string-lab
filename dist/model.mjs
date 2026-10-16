@@ -45,7 +45,7 @@ export function noteName(input) {
   const midi=STRINGS[input.string].midi+input.semitone, names=['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
   return `${names[midi%12]}${Math.floor(midi/12)-1}`;
 }
-export function encode(input) { return new URLSearchParams(Object.entries(sanitize(input)).map(([k,v])=>[k,typeof v==='number'?String(Math.round(v*100000)/100000):v])).toString(); }
+export function encode(input) { return new URLSearchParams(Object.entries({...sanitize(input),model:'schelleng-v1'}).map(([k,v])=>[k,typeof v==='number'?String(Math.round(v*100000)/100000):v])).toString(); }
 export function decode(hash) { return sanitize(Object.fromEntries(new URLSearchParams(hash.replace(/^#/,'')))); }
 export const PRESETS = {
   normal: {...DEFAULT},

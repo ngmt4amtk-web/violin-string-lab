@@ -12,15 +12,15 @@ for(const [name,type,executablePath] of [['chromium',chromium,process.env.CHROMI
   await p.goto(base);await p.waitForSelector('#string-path');
   assert.equal(await p.locator('#status').innerText(),'規則的に鳴る範囲');
   const before=await p.locator('#string-path').getAttribute('d');await p.waitForFunction(d=>document.querySelector('#string-path').getAttribute('d')!==d,before,{timeout:3000});const after=await p.locator('#string-path').getAttribute('d');assert.notEqual(before,after);
-  await p.locator('#play').click();await p.waitForTimeout(50);const stopped=await p.locator('#string-path').getAttribute('d');await p.waitForTimeout(150);assert.equal(stopped,await p.locator('#string-path').getAttribute('d'));
+  await p.locator('#motion-mode').selectOption('cycle');assert.ok((await p.locator('#motion-description').innerText()).includes('1.8秒'));await p.locator('#motion-mode').selectOption('time');await p.locator('#play').click();await p.waitForTimeout(50);const stopped=await p.locator('#string-path').getAttribute('d');await p.waitForTimeout(150);assert.equal(stopped,await p.locator('#string-path').getAttribute('d'));
   for(const string of ['G','D','A','E']){await p.locator(`[data-string="${string}"]`).click();assert.equal(await p.locator(`[data-string="${string}"]`).getAttribute('aria-pressed'),'true');}
   await p.locator('#reset').click();await p.locator('[data-string="A"]').click();await p.locator('#keep-pitch').check();await p.locator('[data-string="D"]').click();assert.equal(await p.locator('#note-badge').innerText(),'A4');assert.equal(Number(await p.locator('#semitone').inputValue()),7);assert.equal(await p.locator('[data-string="E"]').isDisabled(),true);
   await p.locator('#reset').click();await p.locator('#save-a').click();await p.locator('[name="lock"][value="ratio"]').check();await setRange(p,'semitone',12);assert.equal(Number(await p.locator('#distance-number').inputValue()),16);assert.ok((await p.locator('#comparison-rows').innerText()).includes('D5'));
   await p.locator('#restore-a').click();assert.equal(await p.locator('#pitch-output').innerText(),'開放弦');
   await setRange(p,'speed',0);assert.equal(await p.locator('#status').innerText(),'弓が止まっています');await setRange(p,'speed',10);
-  for(const [preset,expected] of [['light','スカスカ側'],['heavy','ギー側'],['bridge','スカスカ側'],['high','規則的に鳴る範囲']]){await p.locator(`[data-preset="${preset}"]`).click();assert.equal(await p.locator('#status').innerText(),expected);}
+  for(const [preset,expected] of [['light','スカスカ側'],['heavy','ギー側'],['bridge','スカスカ側'],['high','規則的に鳴る範囲']]){await p.locator(`[data-preset="${preset}"]`).click();assert.equal(await p.locator('#status').innerText(),expected);if(expected!=='規則的に鳴る範囲'){assert.equal(await p.locator('#play').isDisabled(),true);const d=await p.locator('#string-path').getAttribute('d');await p.waitForTimeout(80);assert.equal(await p.locator('#string-path').getAttribute('d'),d);}}
   await p.locator('#center-force').click();assert.equal(await p.locator('#status').innerText(),'規則的に鳴る範囲');
-  await p.locator('.advanced summary').click();await setRange(p,'semitone',24);await setRange(p,'distance',65);await setRange(p,'friction',.15);await setRange(p,'bodyLoss',5);await setRange(p,'tension',100);await setRange(p,'resistance',2);
+  await p.locator('.advanced summary').click();await setRange(p,'semitone',24);await setRange(p,'distance',65);await setRange(p,'friction',.15);await setRange(p,'bodyLoss',5);await setRange(p,'tension',100);
   assert.equal(await p.locator('#scope-note').isVisible(),true);
   await p.locator('[data-string="G"]').click();await setRange(p,'semitone',1);await setRange(p,'distance',2);await setRange(p,'tension',100);await setRange(p,'speed',60);await setRange(p,'fingerLoss',4);await setRange(p,'length',300);
   assert.equal(await p.locator('#status').innerText(),'緑の帯がない');assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
@@ -37,7 +37,7 @@ for(const [name,type,executablePath] of [['chromium',chromium,process.env.CHROMI
   await p.locator('.advanced summary').click();await p.locator('#sources summary').click();await p.evaluate(()=>scrollTo(0,0));await p.waitForTimeout(200);await p.screenshot({path:path.join(out,`${name}-${viewport.width}.png`),fullPage:true});
   if(viewport.width<=390){await p.locator('#force').scrollIntoViewIfNeeded();await p.waitForTimeout(100);assert.equal(await p.locator('#mobile-monitor').isVisible(),true);await p.screenshot({path:path.join(out,`${name}-${viewport.width}-controls.png`)});}
   assert.deepEqual(errors,[]);assert.deepEqual(requests.filter(u=>!u.startsWith(new URL(base).origin)&&!u.startsWith('blob:')),[]);
-  reports.push({browser:name,width:viewport.width,errors,externalRequests:0,passed:true});await context.close();
+  reports.push({browser:name,width:viewport.width,errors,externalRequests:0,passed:true});fs.writeFileSync(path.join(out,'progress.json'),JSON.stringify(reports,null,2));console.log(name,viewport.width,'passed');await context.close();
  }
  const c=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'}),p=await c.newPage();await p.goto(base);const first=await p.locator('#string-path').getAttribute('d');await p.waitForTimeout(250);assert.equal(first,await p.locator('#string-path').getAttribute('d'));assert.equal(await p.locator('#play').innerText(),'動かす');await c.close();await browser.close();
 }
