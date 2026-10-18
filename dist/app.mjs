@@ -1,9 +1,9 @@
-import {STRINGS,DEFAULT,PRESETS,calculate,sanitize,changePitch,changeString,noteName,encode,decode} from './model.mjs?v=20261016.3';
+import {STRINGS,DEFAULT,loudness,calculate,sanitize,changePitch,changeString,noteName,encode,decode} from './model.mjs?v=20261018.1';
 const $=id=>document.getElementById(id), COLORS={ink:'#25382f',muted:'#68736a',grid:'#dcded3',green:'#2b6651',gs:'#d5e8d8',orange:'#b17727',os:'#f2e4c5',red:'#ae5c4d',rs:'#efd3ca',paper:'#fffef9'};
 const STATES={stable:['規則的に鳴る範囲','つかんで運び、1周期に1回すべる振動が成立しうる条件です。'],light:['スカスカ側','力が下の境目より小さい条件。余分なすべりが生じうる側です。'],heavy:['ギー側','力が上の境目より大きい条件。規則的なすべりを保てなくなる側です。'],none:['緑の帯がない','下の境目が上の境目に達し、この模型では成立範囲がありません。'],stopped:['弓が止まっています','定常音の模型では判定しません。弓の速さを上げると帯が現れます。']};
 let state=location.hash.includes('string=')?decode(location.hash):{...DEFAULT}, model=calculate(state), saved=null;
 try{const item=JSON.parse(localStorage.getItem('string-lab-a'));if(item?.version===1)saved=sanitize(item.state);}catch{}
-const reduced=matchMedia('(prefers-reduced-motion: reduce)');let playing=!reduced.matches,phase=.14,lastTime=0,frame=0,motionMode='time';
+const reduced=matchMedia('(prefers-reduced-motion: reduce)');let playing=!reduced.matches,phase=.14,lastTime=0,frame=0,motionMode='time',direction='down',activeTab='range';
 const fmt=(n,d=1)=>Number.isFinite(n)?n.toLocaleString('ja-JP',{maximumFractionDigits:d}):'—';
 const gf=n=>n>=1e6?`${Math.round(n/10000)}万`:n>=10000?`${fmt(n/10000,1)}万`:n<1?fmt(n,2):fmt(n,n<10?1:0);
 const width=()=>matchMedia('(max-width:670px)').matches?360:600;
@@ -34,34 +34,36 @@ function advice(m){
 }
 function syncControls(){
  const maxDistance=Math.min(65,model.vibratingLength*.45);$('distance').max=maxDistance.toFixed(6);$('distance-number').max=maxDistance.toFixed(6);
- for(const key of ['semitone','distance','speed','tension','fingerLoss','friction','bodyLoss','length']){$(key).value=state[key];}
+ for(const key of ['semitone','distance','speed','tension','fingerLoss']){$(key).value=state[key];}
  for(const k of ['distance','speed','force'])$(k+'-number').value=Math.round(state[k]*10)/10;
  $('force').value=1000*Math.log1p(state.force)/Math.log(1001);
  document.querySelectorAll('input[type="range"]').forEach(el=>el.style.setProperty('--fill',`${100*(Number(el.value)-Number(el.min))/(Number(el.max)-Number(el.min))}%`));
  document.querySelectorAll('[data-string]').forEach(el=>{el.setAttribute('aria-pressed',el.dataset.string===state.string);const st=STRINGS[state.string].midi+state.semitone-STRINGS[el.dataset.string].midi;el.disabled=state.keepPitch&&(st<0||st>24);});
  if($('keep-pitch'))$('keep-pitch').checked=state.keepPitch;
  document.querySelectorAll('[data-pitch]').forEach(el=>el.classList.toggle('active',Number(el.dataset.pitch)===state.semitone));
- document.querySelectorAll('[name="lock"]').forEach(el=>el.checked=el.value===state.lock);
  $('pitch-output').textContent=state.semitone===0?'開放弦':`${noteName(state)} / +${state.semitone}半音`;
  $('length-output').textContent=`振動する長さ ${fmt(model.vibratingLength)} mm · ${fmt(model.frequency)} Hz`;
- $('beta-output').textContent=`今は弦長の ${fmt(model.beta*100)}% の位置（β = ${fmt(model.beta,3)}）`;
- if($('pitch-caution'))$('pitch-caution').hidden=state.semitone===0;
- $('tension-output').textContent=`${fmt(state.tension)} N`;$('fingerLoss-output').textContent=`${fmt(state.fingerLoss)} 倍${state.semitone===0?' / 開放には適用なし':''}`;
- $('friction-output').textContent=fmt(state.friction,2);$('bodyLoss-output').textContent=`${fmt(state.bodyLoss)} 倍`;$('length-output-control').textContent=`${fmt(state.length)} mm`;$('resistance-output').textContent=`${fmt(state.resistance)} N·s/m`;
+ $('beta-output').textContent=`弦の長さの約1/${Math.round(1/model.beta)}の所`;
+ if($('pitch-caution'))$('pitch-caution').hidden=!(state.semitone>0&&model.beta>state.distance/state.length);
+ const products=TENSIONS[state.string],nearest=products.reduce((a,b)=>Math.abs(a[1]-state.tension)<=Math.abs(b[1]-state.tension)?a:b);
+ $('tension-output').textContent=`${fmt(state.tension)} N${Math.abs(nearest[1]-state.tension)<3?' ≈ '+nearest[0]:''}`;
+ $('fingerLoss-output').textContent=`開放弦の${fmt(state.fingerLoss)}倍`;$('finger-note').hidden=state.semitone!==0;
+ $('tension-products').innerHTML=products.map(([name,value])=>`<button data-tension="${value}" aria-label="${name} ${value} N">${name}<small>${value} N</small></button>`).join('');
  $('center-force').disabled=['none','stopped'].includes(model.state)||model.minimum>1000;
 }
 let spokenTimer;
 function render(){
  state=sanitize(state);model=calculate(state);syncControls();
  document.querySelector('.overview').dataset.state=model.state;$('note-badge').textContent=noteName(state);
- $('status').textContent=STATES[model.state][0];$('state-description').textContent=STATES[model.state][1];
+ $('status').textContent=STATES[model.state][0];$('stage-force').textContent=`${gf(state.force)} gf`;$('state-description').textContent=STATES[model.state][1];
+ const level=loudness(state);$('loudness-output').textContent=`${fmt(level,0)}%`;$('loudness-meter').value=level;$('loudness-meter').max=Math.max(400,level);$('loudness-meter').textContent=`${fmt(level,0)}%`;
  $('min-force').innerHTML=model.state==='stopped'?'—':`${gf(model.minimum)} <small>gf</small>`;
  $('max-force').innerHTML=model.state==='stopped'?'—':`${gf(model.maximum)} <small>gf</small>`;
  $('current-force').innerHTML=`${gf(state.force)} <small>gf</small>`;$('band').innerHTML=bandSVG(model);$('advice').textContent=advice(model);
  if($('window-ratio'))$('window-ratio').textContent=model.state==='stopped'?'':model.minimum>=model.maximum?'成立しうる幅なし':`帯の幅：上の境目は下の ${fmt(model.ratio,1)} 倍`;
  const cautions=[];if(model.beta>.2)cautions.push('駒から弦長の20%を超えています。駒に近い前提の近似から離れるため、境目を点線で表示しています。');if(state.distance<10)cautions.push('駒にとても近い条件です。模型は弓が1点で触れると仮定していますが、実際には弓毛に幅があります。');if(model.effectiveR/model.z<10)cautions.push('損失を大きくした条件です。胴の抵抗が弦より十分大きいという近似が弱くなります。');if(model.maximum>1000||model.minimum<.1)cautions.push('境目の一部が固定目盛りの外にあります。値は上の数値欄を参照してください。');
  $('scope-note').hidden=!cautions.length;$('scope-note').textContent=cautions.join(' ');
- drawString();drawMap();drawCompare();updatePlay();updateMonitor();
+ drawString();drawMap();drawCompare();updatePlay();
  clearTimeout(spokenTimer);spokenTimer=setTimeout(()=>{if(!$('spoken-state'))return;$('spoken-state').textContent=`${STATES[model.state][0]}。${model.state==='stopped'?'':`下の境目${gf(model.minimum)}、上の境目${gf(model.maximum)}グラム重。`}`;},350);
 }
 let motionNodes={};
@@ -88,17 +90,17 @@ function drawString(){
 function animateString(){
  const n=motionNodes;if(!n.path)return;
  const visualPhase=model.state==='stable'?phase:.14;
- const p=(visualPhase+model.beta/2)%1,xc=p<.5?p*2:2-p*2,sign=p<.5?1:-1,amp=Math.min(39,model.amplitude*45);
+ const p=(visualPhase+model.beta/2)%1,xc=p<.5?p*2:2-p*2,sign=p<.5?1:-1,amp=Math.min(39,model.amplitude*45),orientation=direction==='down'?1:-1;
  const points=[];
  for(let i=0;i<=100;i++){
   const q=i/100;let y=0;
-  if(model.state==='stable')y=4*amp*sign*(q<=xc?q*(1-xc):xc*(1-q));
+  if(model.state==='stable')y=orientation*4*amp*sign*(q<=xc?q*(1-xc):xc*(1-q));
   else if(model.state==='light')y=14*Math.sin(Math.PI*q)*Math.sin(visualPhase*Math.PI*4-q*6)+5*Math.sin(2*Math.PI*q)*Math.sin(visualPhase*Math.PI*8);
   else if(model.state!=='stopped')y=25*Math.sin(Math.PI*q)*(Math.sin(visualPhase*2*Math.PI)*.7+Math.sin(visualPhase*6*Math.PI+q*3)*.22);
   points.push(`${i?'L':'M'}${(n.left+n.active*q).toFixed(2)} ${(91-y).toFixed(2)}`);
  }
- n.path.setAttribute('d',points.join(' '));n.corner.style.display=model.state==='stable'?'':'none';n.corner.setAttribute('cx',n.left+n.active*xc);n.corner.setAttribute('cy',91-4*amp*sign*xc*(1-xc));
- n.dots.forEach((el,i)=>el.setAttribute('cy',model.state!=='stable'?52+i*16:50+((i*16+phase*80)%80)));
+ n.path.setAttribute('d',points.join(' '));n.corner.style.display=model.state==='stable'?'':'none';n.corner.setAttribute('cx',n.left+n.active*xc);n.corner.setAttribute('cy',91-orientation*4*amp*sign*xc*(1-xc));
+ n.dots.forEach((el,i)=>el.setAttribute('cy',model.state!=='stable'?52+i*16:50+((i*16+(direction==='down'?phase:1-phase)*80)%80)));
 }
 function updatePlay(){const can=model.state==='stable';$('play').disabled=!can;$('play').textContent=can?(playing?'一時停止':'動かす'):'静止の模式図';$('play').setAttribute('aria-pressed',String(playing&&can));if(playing&&can&&!frame&&!document.hidden){lastTime=0;frame=requestAnimationFrame(tick);}}
 function tick(t){frame=0;if(!playing||document.hidden||model.state!=='stable')return;if(lastTime)phase=(phase+Math.min(.05,(t-lastTime)/1000)*(motionMode==='time'?model.frequency/1000:1/1.8))%1;lastTime=t;animateString();frame=requestAnimationFrame(tick);}
@@ -135,15 +137,13 @@ function drawCompare(){
  $('comparison-note').textContent=changed.length?`変わった条件：${changed.join('・')}。AとBの帯は共通の目盛りです。地図のAは距離と力だけの位置を示します。`:'AとBは同じ条件です。条件を一つ動かしてみましょう。';
 }
 function set(next){state=sanitize(next);$('action-message').textContent='';render();}
-for(const key of ['distance','speed','tension','fingerLoss','friction','bodyLoss','length'])$(key).addEventListener('input',e=>set({...state,[key]:Number(e.target.value)}));
-$('semitone').addEventListener('input',e=>set(changePitch(state,Number(e.target.value))));
+for(const key of ['distance','speed','tension','fingerLoss'])$(key).addEventListener('input',e=>set({...state,[key]:Number(e.target.value)}));
+$('semitone').addEventListener('input',e=>set(changePitch({...state,lock:'mm'},Number(e.target.value))));
 $('force').addEventListener('input',e=>set({...state,force:Math.expm1(Number(e.target.value)/1000*Math.log(1001))}));
 for(const key of ['distance','speed','force'])$(key+'-number').addEventListener('change',e=>set({...state,[key]:Number.isFinite(e.target.valueAsNumber)?e.target.valueAsNumber:state[key]}));
-document.querySelectorAll('[data-string]').forEach(el=>el.addEventListener('click',()=>set(changeString(state,el.dataset.string))));
+document.querySelectorAll('[data-string]').forEach(el=>el.addEventListener('click',()=>set(changeString({...state,lock:'mm'},el.dataset.string))));
 $('keep-pitch')?.addEventListener('change',e=>set({...state,keepPitch:e.target.checked}));
-document.querySelectorAll('[data-pitch]').forEach(el=>el.addEventListener('click',()=>set(changePitch(state,Number(el.dataset.pitch)))));
-document.querySelectorAll('[name="lock"]').forEach(el=>el.addEventListener('change',()=>set({...state,lock:el.value})));
-document.querySelectorAll('[data-preset]').forEach(el=>el.addEventListener('click',()=>{set(PRESETS[el.dataset.preset]);document.querySelector('.overview').scrollIntoView({behavior:'instant',block:'start'});}));
+document.querySelectorAll('[data-pitch]').forEach(el=>el.addEventListener('click',()=>set(changePitch({...state,lock:'mm'},Number(el.dataset.pitch)))));
 $('reset').addEventListener('click',()=>{set(DEFAULT);history.replaceState(null,'',location.pathname+location.search);});
 $('center-force').addEventListener('click',()=>set({...state,force:Math.min(1000,Math.sqrt(model.minimum*model.maximum))}));
 $('play').addEventListener('click',()=>{playing=!playing;updatePlay();});
@@ -156,7 +156,7 @@ $('restore-a').addEventListener('click',()=>{if(saved)set(saved);});
 $('share').addEventListener('click',async()=>{const url=new URL(location.href);url.hash=encode(state);history.replaceState(null,'',url);try{await navigator.clipboard.writeText(url.href);$('action-message').textContent='今の条件のリンクをコピーしました。';$('share-fallback').hidden=true;}catch{$('share-url').value=url.href;$('share-fallback').hidden=false;$('share-url').select();$('action-message').textContent='下のURLをコピーすると同じ条件を開けます。';}});
 window.addEventListener('hashchange',()=>{if(location.hash.includes('string='))set(decode(location.hash));});
 let resizeTimer;addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(render,140);});
-function pickMap(event){const box=$('map').querySelector('svg').getBoundingClientRect(),g=mapGeom,px=(event.clientX-box.left)/box.width*g.w,py=(event.clientY-box.top)/box.height*g.h;const fx=Math.min(1,Math.max(0,(px-g.l)/(g.r-g.l))),fy=Math.min(1,Math.max(0,(g.b-py)/(g.b-g.t)));set({...state,distance:2*(g.dmax/2)**fx,force:g.fmin*(g.fmax/g.fmin)**fy});}
+function pickMap(event){const image=$('map').querySelector('svg'),point=image.createSVGPoint();point.x=event.clientX;point.y=event.clientY;const position=point.matrixTransform(image.getScreenCTM().inverse()),g=mapGeom,px=position.x,py=position.y;const fx=Math.min(1,Math.max(0,(px-g.l)/(g.r-g.l))),fy=Math.min(1,Math.max(0,(g.b-py)/(g.b-g.t)));set({...state,distance:2*(g.dmax/2)**fx,force:g.fmin*(g.fmax/g.fmin)**fy});}
 let dragging=false;$('map').addEventListener('pointerdown',e=>{if(e.button!==0)return;dragging=true;$('map').setPointerCapture(e.pointerId);pickMap(e);});$('map').addEventListener('pointermove',e=>{if(dragging)pickMap(e);});for(const name of ['pointerup','pointercancel','lostpointercapture'])$('map').addEventListener(name,()=>dragging=false);
 $('map').addEventListener('keydown',e=>{const steps={ArrowLeft:{distance:state.distance/1.08},ArrowRight:{distance:state.distance*1.08},ArrowUp:{force:Math.max(.1,state.force*1.15)},ArrowDown:{force:state.force/1.15}};if(steps[e.key]){e.preventDefault();set({...state,...steps[e.key]});}});
 $('export').addEventListener('click',async()=>{
@@ -174,13 +174,22 @@ $('export').addEventListener('click',async()=>{
 });
 // Sources are inside details; reveal them when a source link is followed.
 document.querySelectorAll('a[href^="#source-"]').forEach(a=>a.addEventListener('click',()=>{$('sources').open=true;}));
-function updateMonitor(){
- const overview=document.querySelector('.overview').getBoundingClientRect(),about=$('about').getBoundingClientRect();
- $('mobile-monitor').hidden=overview.bottom>120||about.top<120||innerWidth>670;
- $('monitor-status').textContent=STATES[model.state][0];$('monitor-force').textContent=`今 ${gf(model.force)} gf`;
- $('monitor-band').innerHTML=bandSVG(model,360).replace('viewBox="0 0 360 112"','viewBox="0 20 360 46"');
- $('monitor-caption').textContent=model.state==='stopped'?'弓速ゼロ：定常音の判定なし':`教材の計算値：下 ${gf(model.minimum)}〜上 ${gf(model.maximum)} gf`;
+const TENSIONS={E:[['オイドクサ',75.5],['オリーブ',78.5],['ドミナント',76.5],['エヴァピラッツィ',76.5]],A:[['オイドクサ',48.1],['オリーブ',53],['ドミナント',53.9],['エヴァピラッツィ',54.9]],D:[['オイドクサ',36.3],['オリーブ',48.1],['ドミナント',40.2],['エヴァピラッツィ',47.1]],G:[['オイドクサ',37.3],['オリーブ',38.2],['ドミナント',43.1],['エヴァピラッツィ',48.1]]};
+$('tension-products').addEventListener('click',e=>{const button=e.target.closest('[data-tension]');if(button)set({...state,tension:Number(button.dataset.tension)});});
+document.querySelectorAll('[data-direction]').forEach(el=>el.addEventListener('click',()=>{direction=el.dataset.direction;document.querySelectorAll('[data-direction]').forEach(b=>b.setAttribute('aria-pressed',b===el));animateString();}));
+const mobile=matchMedia('(max-width:670px)');
+function selectTab(name){activeTab=name;document.querySelectorAll('[data-tab]').forEach(b=>{const selected=b.dataset.tab===name;b.setAttribute('aria-selected',selected);b.tabIndex=selected?0:-1;});for(const name of ['range','motion','map'])$(name+'-panel').hidden=mobile.matches&&name!==activeTab;}
+document.querySelectorAll('[data-tab]').forEach(el=>{el.addEventListener('click',()=>selectTab(el.dataset.tab));el.addEventListener('keydown',e=>{const tabs=['range','motion','map'],i=tabs.indexOf(activeTab);let next;if(e.key==='ArrowRight')next=tabs[(i+1)%3];if(e.key==='ArrowLeft')next=tabs[(i+2)%3];if(e.key==='Home')next=tabs[0];if(e.key==='End')next=tabs[2];if(next){e.preventDefault();selectTab(next);$('tab-'+next).focus();}});});
+mobile.addEventListener('change',()=>{selectTab(activeTab);if($('control-info').open)positionInfo();});selectTab(activeTab);
+const INFO={"distance":["駒からの距離",["駒は弦の支点です。駒に近い所で弦を運ぶほど、てこのように弦全体が大きく振れて、同じ弓の速さでも大きく鳴ります。効くのはmmではなく「弦の長さの何分の1の所か」です。","駒に寄ると、スカスカの境目（下）が大きく上がり、ギーの境目（上）も上がります。距離を半分にすると、下は4倍、上は2倍。範囲は重い側へ移って狭くなります。指板に寄ると逆で、軽い力でも鳴りますが、少し重くするとすぐギーになります。","駒寄りで大きく鳴らすほど、重さを足さないとスカスカになり、許される重さの幅も狭くなります。高い音では弦が短くなるので、同じmmのままだと弦にとっては指板寄りになります。同じ響きにするには、自分で駒へ寄せます。"]],"speed":["弓の速さ",["弦が毛につかまれて運ばれる時間は、弾く場所が同じなら弓の速さでは変わりません。その決まった時間に弓が進む距離だけ弦が運ばれるので、速いほど弦が大きく揺れて、大きく鳴ります。","速くすると、下と上の境目がどちらも同じ割合で上がります（2倍速なら両方2倍）。同じ重さのまま速くすると、スカスカ側へ寄ります。遅くするとギー側へ寄ります。ただし、機械で弾いた実測（2008年）では、下の境目は弓の速さでほとんど変わりませんでした。","同じ場所なら、音量は弓の速さで作ります。速くしたら、帯の中に残るように重さも足します。弓を返す直前は速さが0へ近づくので、重さを抜きます。"]],"force":["弦にかける弓の力",["弓の毛が弦を垂直に押しつける力（重さ）です。軽すぎると、弦が毛につかまり続けられず、1周期に何度も外れて、かすれた音になります。重すぎると、外れる合図（弦の上を回る角）が来ても弦が毛から離れられず、ギーという雑音になります。","力を変えても帯は動かず、「今」の印だけが左右に動きます。範囲の中では、重いほど角が鋭く残って、明るい音になります（音量はほぼ変わりません）。","場所と速さで音量を決めたら、重さはその範囲の中で音色に使います。範囲の外へ出た時は、重さだけでなく場所や速さを変えて範囲のほうを動かす手もあります。"]],"semitone":["押さえる音",["指で押さえると、振動する弦が短くなり、角が1周する時間が短くなって音が高くなります。1オクターブ上では長さが半分です。","高い音では弦が短くなるので、同じmmのままだと、弦にとっては駒から遠い所を弾いているのと同じになり、帯は軽い側へ移ります。鳴りの大きさも下がります。駒へ寄せると戻ります。さらに、押さえた指が揺れを吸うので、スカスカの境目（下）だけが上がって範囲が狭くなります（開放弦にはかかりません）。","ハイポジションで音がやせる時は、弓より先に「範囲が動いた」と考えて、駒へ寄せるか重さを足して試します。"]],"tension":["弦の張力",["弦を長さ方向に張る力です。同じ音高なら、張りの強い弦ほど弦が動かしにくく、弓が運ぶのに力が要ります。","張力を上げると、下の境目は張力の2乗、上の境目は張力に比例して上がります。範囲は重い側へ移ります。","張りの強い弦に替えると、同じ弾き方でスカスカに寄りやすくなります。表示している製品の値はメーカー公表のミディアムの張力で、音色の良し悪しは示しません。"]],"fingerLoss":["押さえた指が揺れを吸う量",["押さえた指先は、弦の揺れを少し吸い取ります。吸われる分、弦が毛につかまり続けるのに必要な重さが上がります。","スカスカの境目（下）だけが上がり、上の境目は動きません。吸う量が大きいと、範囲はほとんど無くなります（ウルフ音に近い状態）。機械で弾いた実測では、開放弦の約2.3倍でした。","押さえた音で芯が抜けたら、弓より先に範囲が上がったと考えて、重さを足すか場所を変えます。押さえる強さとの関係は、弓で弾く条件ではまだ測られていません。"]]};
+let infoTrigger=null;
+function positionInfo(){const dialog=$('control-info');if(mobile.matches){dialog.style.removeProperty('top');dialog.style.removeProperty('left');return;}const r=infoTrigger.getBoundingClientRect(),w=dialog.getBoundingClientRect().width;dialog.style.left=`${Math.max(12,Math.min(innerWidth-w-12,r.right-w))}px`;dialog.style.top=`${Math.max(12,Math.min(innerHeight-dialog.offsetHeight-12,r.bottom+6))}px`;}
+for(const [key,[title,paragraphs]] of Object.entries(INFO)){
+ const label=document.querySelector(`label[for="${key}"]`),wrap=document.createElement('span'),button=document.createElement('button');wrap.className='info-label';label.before(wrap);wrap.append(label,button);button.className='info-button';button.type='button';button.textContent='i';button.setAttribute('aria-label',title+'の説明');button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','control-info');
+ button.addEventListener('click',()=>{infoTrigger=button;$('info-title').textContent=title;$('info-content').innerHTML=paragraphs.map((text,i)=>`<h3>${['何が変わるか','帯では','演奏では'][i]}</h3><p>${text}</p>`).join('');$('control-info').showModal();$('control-info').scrollTop=0;positionInfo();});
 }
-$('back-to-diagram').addEventListener('click',()=>document.querySelector('.overview').scrollIntoView({behavior:reduced.matches?'auto':'smooth'}));
-let scrollFrame=0;addEventListener('scroll',()=>{if(!scrollFrame)scrollFrame=requestAnimationFrame(()=>{scrollFrame=0;updateMonitor();});},{passive:true});
+$('info-close').addEventListener('click',()=>$('control-info').close());
+$('control-info').addEventListener('click',e=>{if(e.target!==$('control-info'))return;const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();});
+$('control-info').addEventListener('close',()=>infoTrigger?.focus({preventScroll:true}));
+addEventListener('resize',()=>{if($('control-info').open)positionInfo();});
 render();

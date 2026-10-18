@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {DEFAULT,STRINGS,calculate,changePitch,changeString,sanitize,encode,decode,noteName} from '../dist/model.mjs';
+import {DEFAULT,STRINGS,loudness,calculate,changePitch,changeString,sanitize,encode,decode,noteName} from '../dist/model.mjs';
 const near=(a,b,t=1e-9)=>assert.ok(Math.abs(a-b)<t,`${a} ≠ ${b}`);
-test('default note, string geometry and conversion are consistent',()=>{const m=calculate(DEFAULT);near(m.frequency,293.6647679174076);near(m.beta,32/328);near(m.z,45/(.656*m.frequency));assert.equal(m.state,'stable');assert.equal(noteName(DEFAULT),'D4');});
+test('default note, string geometry and conversion are consistent',()=>{const m=calculate(DEFAULT);near(m.frequency,440);near(m.beta,32/328);near(m.z,55/(.656*m.frequency));assert.equal(m.state,'stable');assert.equal(noteName(DEFAULT),'A4');});
 test('half the bridge distance quadruples lower and doubles upper bound',()=>{const a=calculate(DEFAULT),b=calculate({...DEFAULT,distance:16});near(b.minimum/a.minimum,4);near(b.maximum/a.maximum,2);});
 test('classical model: bow speed scales both limits linearly',()=>{const a=calculate(DEFAULT),b=calculate({...DEFAULT,speed:30});near(b.minimum/a.minimum,3);near(b.maximum/a.maximum,3);near(a.ratio,b.ratio);});
 test('pitch with distance fixed and no extra loss separates shortening from damping',()=>{const a=calculate({...DEFAULT,fingerLoss:1}),b=calculate({...DEFAULT,semitone:12,fingerLoss:1});near(b.frequency/a.frequency,2);near(b.vibratingLength/a.vibratingLength,.5);near(b.z,a.z);near(b.minimum/a.minimum,.25);near(b.maximum/a.maximum,.5);});
@@ -11,5 +11,11 @@ test('finger loss only affects the lower bound of stopped notes',()=>{const a=ca
 test('same-pitch string comparison preserves A4 and refuses unavailable pitches',()=>{const a={...DEFAULT,string:'A',semitone:0,keepPitch:true};const d=changeString(a,'D'),g=changeString(a,'G');assert.equal(d.semitone,7);assert.equal(g.semitone,14);near(calculate(a).frequency,calculate(d).frequency);near(calculate(a).frequency,calculate(g).frequency);assert.equal(changeString(a,'E').string,'A');assert.equal(decode(encode(a)).keepPitch,true);});
 test('higher friction difference scales both bounds inversely',()=>{const a=calculate(DEFAULT),b=calculate({...DEFAULT,friction:1.04});near(b.minimum/a.minimum,.5);near(b.maximum/a.maximum,.5);});
 test('classification includes stopped, no possible window and both outside regimes',()=>{assert.equal(calculate({...DEFAULT,speed:0}).state,'stopped');assert.equal(calculate({...DEFAULT,force:0}).state,'light');assert.equal(calculate({...DEFAULT,force:1000}).state,'heavy');assert.equal(calculate({...DEFAULT,distance:2,resistance:2,bodyLoss:5}).state,'none');});
-test('share links roundtrip and untrusted state is bounded',()=>{assert.deepEqual(decode(encode(DEFAULT)),DEFAULT);const s=sanitize({string:'<script>',semitone:999,distance:Infinity,force:-99,friction:0,length:300});assert.equal(s.string,'D');assert.equal(s.semitone,24);assert.equal(s.force,0);assert.equal(s.friction,.15);assert.ok(s.distance<=s.length/4*.45);});
+test('share links roundtrip and untrusted state is bounded',()=>{assert.deepEqual(decode(encode(DEFAULT)),DEFAULT);const s=sanitize({string:'<script>',semitone:999,distance:Infinity,force:-99,friction:0,length:300});assert.equal(s.string,'A');assert.equal(s.semitone,24);assert.equal(s.force,0);assert.equal(s.friction,.15);assert.ok(s.distance<=s.length/4*.45);});
 test('all supported strings and pitch ranges have finite bounded results',()=>{let count=0;for(const string of Object.keys(STRINGS))for(let semitone=0;semitone<=24;semitone++)for(const speed of [0,1,10,60])for(const distance of [2,8,32,65])for(const fingerLoss of [1,4]){const m=calculate({...DEFAULT,string,semitone,speed,distance,fingerLoss,tension:STRINGS[string].tension});for(const k of ['minimum','maximum','amplitude','beta','z','frequency'])assert.ok(Number.isFinite(m[k]));assert.ok(m.beta<=.45+1e-12);assert.ok(m.vibratingLength>0);count++;}assert.equal(count,3200);});
+
+test('loudness reference is 100',()=>near(loudness(DEFAULT),100));
+test('loudness halves one octave up at the same millimetres',()=>near(loudness({...DEFAULT,semitone:12}),50));
+test('loudness doubles at half the bridge distance',()=>near(loudness({...DEFAULT,distance:16}),200));
+test('loudness doubles at twice the bow speed',()=>near(loudness({...DEFAULT,speed:20}),200));
+test('loudness is zero at rest and independent of finger loss and bow force',()=>{near(loudness({...DEFAULT,speed:0}),0);near(loudness({...DEFAULT,semitone:12,distance:16,fingerLoss:4,force:1}),100);});

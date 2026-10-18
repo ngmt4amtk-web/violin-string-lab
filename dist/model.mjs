@@ -5,7 +5,7 @@ export const STRINGS = {
   A: { midi: 69, tension: 55, color: '#387c78' },
   E: { midi: 76, tension: 70, color: '#6778a8' },
 };
-export const DEFAULT = Object.freeze({string:'D', semitone:0, distance:32, speed:10, force:35, length:328, tension:45, friction:.52, resistance:10, fingerLoss:2, bodyLoss:1, lock:'mm',keepPitch:false});
+export const DEFAULT = Object.freeze({string:'A', semitone:0, distance:32, speed:10, force:35, length:328, tension:55, friction:.52, resistance:10, fingerLoss:2, bodyLoss:1, lock:'mm',keepPitch:false});
 export const GF = .00980665;
 const clamp = (x,a,b) => Math.min(b, Math.max(a,x));
 export function sanitize(input={}) {
@@ -47,11 +47,10 @@ export function noteName(input) {
 }
 export function encode(input) { return new URLSearchParams(Object.entries({...sanitize(input),model:'schelleng-v1'}).map(([k,v])=>[k,typeof v==='number'?String(Math.round(v*100000)/100000):v])).toString(); }
 export function decode(hash) { return sanitize(Object.fromEntries(new URLSearchParams(hash.replace(/^#/,'')))); }
-export const PRESETS = {
-  normal: {...DEFAULT},
-  light: {...DEFAULT,force:2},
-  heavy: {...DEFAULT,force:150},
-  bridge: {...DEFAULT,distance:8,force:35},
-  high: {...DEFAULT,semitone:12,distance:16,force:35,lock:'ratio'},
-  fast: {...DEFAULT,speed:30,force:35},
-};
+
+
+// Relative bridge-force magnitude in the ideal motion; not measured loudness.
+export function loudness(input) {
+  const m=calculate(input),reference=calculate(DEFAULT);
+  return 100*(m.z*m.speed/m.beta)/(reference.z*reference.speed/reference.beta);
+}
