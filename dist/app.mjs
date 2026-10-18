@@ -1,4 +1,4 @@
-import {STRINGS,DEFAULT,loudness,calculate,sanitize,changePitch,changeString,noteName,encode,decode} from './model.mjs?v=20261018.1';
+import {STRINGS,DEFAULT,loudness,calculate,sanitize,changePitch,changeString,noteName,encode,decode} from './model.mjs?v=20261018.2';
 const $=id=>document.getElementById(id), COLORS={ink:'#25382f',muted:'#68736a',grid:'#dcded3',green:'#2b6651',gs:'#d5e8d8',orange:'#b17727',os:'#f2e4c5',red:'#ae5c4d',rs:'#efd3ca',paper:'#fffef9'};
 const STATES={stable:['規則的に鳴る範囲','つかんで運び、1周期に1回すべる振動が成立しうる条件です。'],light:['スカスカ側','力が下の境目より小さい条件。余分なすべりが生じうる側です。'],heavy:['ギー側','力が上の境目より大きい条件。規則的なすべりを保てなくなる側です。'],none:['緑の帯がない','下の境目が上の境目に達し、この模型では成立範囲がありません。'],stopped:['弓が止まっています','定常音の模型では判定しません。弓の速さを上げると帯が現れます。']};
 let state=location.hash.includes('string=')?decode(location.hash):{...DEFAULT}, model=calculate(state), saved=null;
@@ -34,7 +34,7 @@ function advice(m){
 }
 function syncControls(){
  const maxDistance=Math.min(65,model.vibratingLength*.45);$('distance').max=maxDistance.toFixed(6);$('distance-number').max=maxDistance.toFixed(6);
- for(const key of ['semitone','distance','speed','tension','fingerLoss']){$(key).value=state[key];}
+ for(const key of ['semitone','distance','speed','tension']){$(key).value=state[key];}
  for(const k of ['distance','speed','force'])$(k+'-number').value=Math.round(state[k]*10)/10;
  $('force').value=1000*Math.log1p(state.force)/Math.log(1001);
  document.querySelectorAll('input[type="range"]').forEach(el=>el.style.setProperty('--fill',`${100*(Number(el.value)-Number(el.min))/(Number(el.max)-Number(el.min))}%`));
@@ -47,7 +47,6 @@ function syncControls(){
  if($('pitch-caution'))$('pitch-caution').hidden=!(state.semitone>0&&model.beta>state.distance/state.length);
  const products=TENSIONS[state.string],nearest=products.reduce((a,b)=>Math.abs(a[1]-state.tension)<=Math.abs(b[1]-state.tension)?a:b);
  $('tension-output').textContent=`${fmt(state.tension)} N${Math.abs(nearest[1]-state.tension)<3?' ≈ '+nearest[0]:''}`;
- $('fingerLoss-output').textContent=`開放弦の${fmt(state.fingerLoss)}倍`;$('finger-note').hidden=state.semitone!==0;
  $('tension-products').innerHTML=products.map(([name,value])=>`<button data-tension="${value}" aria-label="${name} ${value} N">${name}<small>${value} N</small></button>`).join('');
  $('center-force').disabled=['none','stopped'].includes(model.state)||model.minimum>1000;
 }
@@ -138,7 +137,7 @@ function drawCompare(){
  $('comparison-note').textContent=changed.length?`変わった条件：${changed.join('・')}。AとBの帯は共通の目盛りです。地図のAは距離と力だけの位置を示します。`:'AとBは同じ条件です。条件を一つ動かしてみましょう。';
 }
 function set(next){state=sanitize(next);$('action-message').textContent='';render();}
-for(const key of ['distance','speed','tension','fingerLoss'])$(key).addEventListener('input',e=>set({...state,[key]:Number(e.target.value)}));
+for(const key of ['distance','speed','tension'])$(key).addEventListener('input',e=>set({...state,[key]:Number(e.target.value)}));
 $('semitone').addEventListener('input',e=>set(changePitch({...state,lock:'mm'},Number(e.target.value))));
 $('force').addEventListener('input',e=>set({...state,force:Math.expm1(Number(e.target.value)/1000*Math.log(1001))}));
 for(const key of ['distance','speed','force'])$(key+'-number').addEventListener('change',e=>set({...state,[key]:Number.isFinite(e.target.valueAsNumber)?e.target.valueAsNumber:state[key]}));
@@ -182,7 +181,7 @@ const mobile=matchMedia('(max-width:670px)');
 function selectTab(name){activeTab=name;document.querySelectorAll('[data-tab]').forEach(b=>{const selected=b.dataset.tab===name;b.setAttribute('aria-selected',selected);b.tabIndex=selected?0:-1;});for(const name of ['range','motion','map'])$(name+'-panel').hidden=mobile.matches&&name!==activeTab;}
 document.querySelectorAll('[data-tab]').forEach(el=>{el.addEventListener('click',()=>selectTab(el.dataset.tab));el.addEventListener('keydown',e=>{const tabs=['range','motion','map'],i=tabs.indexOf(activeTab);let next;if(e.key==='ArrowRight')next=tabs[(i+1)%3];if(e.key==='ArrowLeft')next=tabs[(i+2)%3];if(e.key==='Home')next=tabs[0];if(e.key==='End')next=tabs[2];if(next){e.preventDefault();selectTab(next);$('tab-'+next).focus();}});});
 mobile.addEventListener('change',()=>{selectTab(activeTab);if($('control-info').open)positionInfo();});selectTab(activeTab);
-const INFO={"distance":["駒からの距離",["駒は弦の支点です。駒に近い所で弦を運ぶほど、てこのように弦全体が大きく振れて、同じ弓の速さでも大きく鳴ります。効くのはmmではなく「弦の長さの何分の1の所か」です。","駒に寄ると、スカスカの境目（下）が大きく上がり、ギーの境目（上）も上がります。距離を半分にすると、下は4倍、上は2倍。範囲は重い側へ移って狭くなります。指板に寄ると逆で、軽い力でも鳴りますが、少し重くするとすぐギーになります。","駒寄りで大きく鳴らすほど、重さを足さないとスカスカになり、許される重さの幅も狭くなります。高い音では弦が短くなるので、同じmmのままだと弦にとっては指板寄りになります。同じ響きにするには、自分で駒へ寄せます。"]],"speed":["弓の速さ",["弦が毛につかまれて運ばれる時間は、弾く場所が同じなら弓の速さでは変わりません。その決まった時間に弓が進む距離だけ弦が運ばれるので、速いほど弦が大きく揺れて、大きく鳴ります。","速くすると、下と上の境目がどちらも同じ割合で上がります（2倍速なら両方2倍）。同じ重さのまま速くすると、スカスカ側へ寄ります。遅くするとギー側へ寄ります。ただし、機械で弾いた実測（2008年）では、下の境目は弓の速さでほとんど変わりませんでした。","同じ場所なら、音量は弓の速さで作ります。速くしたら、帯の中に残るように重さも足します。弓を返す直前は速さが0へ近づくので、重さを抜きます。"]],"force":["弦にかける弓の力",["弓の毛が弦を垂直に押しつける力（重さ）です。軽すぎると、弦が毛につかまり続けられず、1周期に何度も外れて、かすれた音になります。重すぎると、外れる合図（弦の上を回る角）が来ても弦が毛から離れられず、ギーという雑音になります。","力を変えても帯は動かず、「今」の印だけが左右に動きます。範囲の中では、重いほど角が鋭く残って、明るい音になります（音量はほぼ変わりません）。","場所と速さで音量を決めたら、重さはその範囲の中で音色に使います。範囲の外へ出た時は、重さだけでなく場所や速さを変えて範囲のほうを動かす手もあります。"]],"semitone":["押さえる音",["指で押さえると、振動する弦が短くなり、角が1周する時間が短くなって音が高くなります。1オクターブ上では長さが半分です。","高い音では弦が短くなるので、同じmmのままだと、弦にとっては駒から遠い所を弾いているのと同じになり、帯は軽い側へ移ります。音量のもと（駒を揺らす力）も下がります。駒へ寄せると戻ります。さらに、押さえた指が揺れを吸うので、スカスカの境目（下）だけが上がって範囲が狭くなります（開放弦にはかかりません）。","ハイポジションで音がやせる時は、弓より先に「範囲が動いた」と考えて、駒へ寄せるか重さを足して試します。"]],"tension":["弦の張力",["弦を長さ方向に張る力です。同じ音高なら、張りの強い弦ほど弦が動かしにくく、弓が運ぶのに力が要ります。","張力を上げると、下の境目は張力の2乗、上の境目は張力に比例して上がります。範囲は重い側へ移ります。","張りの強い弦に替えると、同じ弾き方でスカスカに寄りやすくなります。表示している製品の値はメーカー公表のミディアムの張力で、音色の良し悪しは示しません。"]],"fingerLoss":["押さえた指が揺れを吸う量",["押さえた指先は、弦の揺れを少し吸い取ります。吸われる分、弦が毛につかまり続けるのに必要な重さが上がります。","スカスカの境目（下）だけが上がり、上の境目は動きません。吸う量が大きいと、範囲はほとんど無くなります（ウルフ音に近い状態）。機械で弾いた実測では、開放弦の約2.3倍でした。","押さえた音で芯が抜けたら、弓より先に範囲が上がったと考えて、重さを足すか場所を変えます。押さえる強さとの関係は、弓で弾く条件ではまだ測られていません。"]]};
+const INFO={"distance":["駒からの距離",["駒は弦の支点です。駒に近い所で弦を運ぶほど、てこのように弦全体が大きく振れて、同じ弓の速さでも大きく鳴ります。効くのはmmではなく「弦の長さの何分の1の所か」です。","駒に寄ると、スカスカの境目（下）が大きく上がり、ギーの境目（上）も上がります。距離を半分にすると、下は4倍、上は2倍。範囲は重い側へ移って狭くなります。指板に寄ると逆で、軽い力でも鳴りますが、少し重くするとすぐギーになります。","駒寄りで大きく鳴らすほど、重さを足さないとスカスカになり、許される重さの幅も狭くなります。高い音では弦が短くなるので、同じmmのままだと弦にとっては指板寄りになります。同じ響きにするには、自分で駒へ寄せます。"]],"speed":["弓の速さ",["弦が毛につかまれて運ばれる時間は、弾く場所が同じなら弓の速さでは変わりません。その決まった時間に弓が進む距離だけ弦が運ばれるので、速いほど弦が大きく揺れて、大きく鳴ります。","速くすると、下と上の境目がどちらも同じ割合で上がります（2倍速なら両方2倍）。同じ重さのまま速くすると、スカスカ側へ寄ります。遅くするとギー側へ寄ります。ただし、機械で弾いた実測（2008年）では、下の境目は弓の速さでほとんど変わりませんでした。","同じ場所なら、音量は弓の速さで作ります。速くしたら、帯の中に残るように重さも足します。弓を返す直前は速さが0へ近づくので、重さを抜きます。"]],"force":["弦にかける弓の力",["弓の毛が弦を垂直に押しつける力（重さ）です。軽すぎると、弦が毛につかまり続けられず、1周期に何度も外れて、かすれた音になります。重すぎると、外れる合図（弦の上を回る角）が来ても弦が毛から離れられず、ギーという雑音になります。","力を変えても帯は動かず、「今」の印だけが左右に動きます。範囲の中では、重いほど角が鋭く残って、明るい音になります（音量はほぼ変わりません）。","場所と速さで音量を決めたら、重さはその範囲の中で音色に使います。範囲の外へ出た時は、重さだけでなく場所や速さを変えて範囲のほうを動かす手もあります。"]],"semitone":["押さえる音",["指で押さえると、振動する弦が短くなり、角が1周する時間が短くなって音が高くなります。1オクターブ上では長さが半分です。もう一つ、押さえた所は駒や上駒のような硬い支えではなく、やわらかい指先です。弦の揺れの一部が指先に逃げるので、押さえた音は開放弦より少し鳴りにくくなります。","高い音では弦が短くなるので、同じmmのままだと、弦にとっては駒から遠い所を弾いているのと同じになり、帯は軽い側へ移ります。音量のもと（駒を揺らす力）も下がります。駒へ寄せると戻ります。また、指先に揺れが逃げる分、スカスカの境目（下）だけが上がります。このアプリでは、機械で弾いた実測（開放弦の約2.3倍）に近い2倍で固定しています（開放弦にはかかりません）。","ハイポジションで音がやせる時は、弓より先に「範囲が動いた」と考えて、駒へ寄せるか重さを足して試します。開放弦と押さえた音で鳴り方が違うのは、弓のせいだけではありません。指板までしっかり押さえ切れていないと、揺れが大きく逃げて鳴りにくくなります。押さえ切った後の強さの差や、ポジション・指による差は、まだ測られていません。"]],"tension":["弦の張力",["弦を長さ方向に張る力です。同じ音高なら、張りの強い弦ほど弦が動かしにくく、弓が運ぶのに力が要ります。","張力を上げると、下の境目は張力の2乗、上の境目は張力に比例して上がります。範囲は重い側へ移ります。","張りの強い弦に替えると、同じ弾き方でスカスカに寄りやすくなります。表示している製品の値はメーカー公表のミディアムの張力で、音色の良し悪しは示しません。"]]};
 let infoTrigger=null;
 function positionInfo(){const dialog=$('control-info');if(mobile.matches){dialog.style.removeProperty('top');dialog.style.removeProperty('left');return;}const r=infoTrigger.getBoundingClientRect(),w=dialog.getBoundingClientRect().width;dialog.style.left=`${Math.max(12,Math.min(innerWidth-w-12,r.right-w))}px`;dialog.style.top=`${Math.max(12,Math.min(innerHeight-dialog.offsetHeight-12,r.bottom+6))}px`;}
 for(const [key,[title,paragraphs]] of Object.entries(INFO)){
