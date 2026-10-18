@@ -13,6 +13,25 @@ for(const [name,type,executablePath] of [['chromium',chromium,process.env.CHROMI
   await p.goto(base);await p.waitForSelector('#string-path',{state:'attached'});
   assert.equal(await p.locator('#status').innerText(),'規則的に鳴る範囲');
   assert.equal(await p.locator('#note-badge').innerText(),'A4');assert.equal(await p.locator('#note-badge').isVisible(),true);assert.equal(await p.locator('#pitch-output').innerText(),'開放弦');assert.equal(Number(await p.locator('#distance-number').inputValue()),32);assert.equal(Number(await p.locator('#speed-number').inputValue()),10);assert.equal(Number(await p.locator('#force-number').inputValue()),35);
+  if(viewport.width===390){
+   for(const tab of ['range','motion','map']){
+    await showFigure(p,tab);
+    const widths=await p.evaluate(()=>Object.fromEntries(['.workspace','#stage','.controls','.stage-notes'].map(selector=>[selector,document.querySelector(selector).getBoundingClientRect().width])));
+    assert.ok(Math.abs(widths['#stage']-widths['.controls'])<=1,`${tab}: stage/controls width`);
+    for(const selector of ['#stage','.controls','.stage-notes'])assert.ok(Math.abs(widths[selector]-widths['.workspace'])<=1,`${tab}: ${selector} width`);
+    const stage=await p.locator('#stage').boundingBox();assert.ok(Math.abs(stage.x-16)<=1);assert.ok(stage.height<=viewport.height*.44+.5);
+    if(tab==='motion'){
+     const play=await p.locator('#play').boundingBox(),map=await p.locator('#tab-map').boundingBox(),down=await p.locator('[data-direction="down"]').boundingBox(),up=await p.locator('[data-direction="up"]').boundingBox();
+     assert.ok(play.x+play.width<=map.x||map.x+map.width<=play.x||play.y+play.height<=map.y||map.y+map.height<=play.y,'play/map overlap');
+     assert.ok(Math.abs(play.y-down.y)<=1&&Math.abs(play.y-up.y)<=1,'motion buttons on one row');
+     const figure=await p.locator('#string-figure').boundingBox(),mode=await p.locator('.motion-mode-label').boundingBox();assert.ok(mode.y>=figure.y+figure.height-.5,'mode below figure');
+    }
+   }
+   await showFigure(p,'range');assert.equal(await p.locator('#loudness-output').innerText(),'100%');
+   const fillRatio=()=>p.evaluate(()=>document.querySelector('#loudness-fill').getBoundingClientRect().width/document.querySelector('#loudness-meter').getBoundingClientRect().width);
+   assert.ok(Math.abs(await fillRatio()-.5)<=.01,'100% fills half the meter');
+   await setRange(p,'speed',30);assert.equal(await p.locator('#loudness-output').innerText(),'300%');assert.ok(Math.abs(await fillRatio()-1)<=.01,'over 200% fills the meter');await setRange(p,'speed',10);
+  }
   await showFigure(p,'motion');assert.equal(await p.locator('#string-figure').isVisible(),true);
   const before=await p.locator('#string-path').getAttribute('d');await p.waitForFunction(d=>document.querySelector('#string-path').getAttribute('d')!==d,before,{timeout:3000});const after=await p.locator('#string-path').getAttribute('d');assert.notEqual(before,after);
   await p.locator('#motion-mode').selectOption('cycle');assert.ok((await p.locator('#motion-description').innerText()).includes('1.8秒'));await p.locator('#motion-mode').selectOption('time');await p.locator('#play').click();await p.waitForTimeout(50);const stopped=await p.locator('#string-path').getAttribute('d');await p.waitForTimeout(150);assert.equal(stopped,await p.locator('#string-path').getAttribute('d'));
