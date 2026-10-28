@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {DEFAULT,STRINGS,loudness,calculate,changePitch,changeString,sanitize,encode,decode,noteName} from '../dist/model.mjs';
+import {DEFAULT,STRINGS,GF,HAIR_LENGTH,loudness,calculate,changePitch,changeString,sanitize,encode,decode,noteName} from '../dist/model.mjs';
 const near=(a,b,t=1e-9)=>assert.ok(Math.abs(a-b)<t,`${a} ≠ ${b}`);
 test('default note, string geometry and conversion are consistent',()=>{const m=calculate(DEFAULT);near(m.frequency,440);near(m.beta,32/328);near(m.z,55/(.656*m.frequency));assert.equal(m.state,'stable');assert.equal(noteName(DEFAULT),'A4');});
 test('half the bridge distance quadruples lower and doubles upper bound',()=>{const a=calculate(DEFAULT),b=calculate({...DEFAULT,distance:16});near(b.minimum/a.minimum,4);near(b.maximum/a.maximum,2);});
@@ -19,3 +19,7 @@ test('loudness halves one octave up at the same millimetres',()=>near(loudness({
 test('loudness doubles at half the bridge distance',()=>near(loudness({...DEFAULT,distance:16}),200));
 test('loudness doubles at twice the bow speed',()=>near(loudness({...DEFAULT,speed:20}),200));
 test('loudness is zero at rest and independent of finger loss and bow force',()=>{near(loudness({...DEFAULT,speed:0}),0);near(loudness({...DEFAULT,semitone:12,distance:16,fingerLoss:4,force:1}),100);});
+
+test('bow hair tension leaves bounds and loudness unchanged',()=>{const a=calculate(DEFAULT);for(const hairTension of [30,90]){const b=calculate({...DEFAULT,hairTension});assert.equal(b.minimum,a.minimum);assert.equal(b.maximum,a.maximum);assert.equal(b.state,a.state);assert.equal(loudness({...DEFAULT,hairTension}),loudness(DEFAULT));}});
+test('mid-bow hair sink follows a taut thread and scales inversely with hair tension',()=>{const a=calculate(DEFAULT);near(a.hairSink,35*GF*.64/(4*60)*1000);near(calculate({...DEFAULT,hairTension:30}).hairSink/a.hairSink,2);near(calculate({...DEFAULT,force:70}).hairSink/a.hairSink,2);near(a.hairSinkMin/a.hairSink,a.minimum/35);near(a.hairSinkMax/a.hairSink,a.maximum/35);assert.equal(HAIR_LENGTH,640);});
+test('bow hair tension is bounded and survives share links',()=>{assert.equal(sanitize({hairTension:5}).hairTension,30);assert.equal(sanitize({hairTension:500}).hairTension,90);assert.equal(sanitize({}).hairTension,60);assert.equal(decode(encode({...DEFAULT,hairTension:42})).hairTension,42);assert.equal(decode('#string=A&distance=32').hairTension,60);});
