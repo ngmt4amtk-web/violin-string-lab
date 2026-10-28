@@ -5,13 +5,15 @@ export const STRINGS = {
   A: { midi: 69, tension: 55, color: '#387c78' },
   E: { midi: 76, tension: 70, color: '#6778a8' },
 };
-export const DEFAULT = Object.freeze({string:'A', semitone:0, distance:32, speed:10, force:35, length:328, tension:55, friction:.52, resistance:10, fingerLoss:2, bodyLoss:1, lock:'mm',keepPitch:false});
+export const DEFAULT = Object.freeze({string:'A', semitone:0, distance:32, speed:10, force:35, length:328, tension:55, friction:.52, resistance:10, fingerLoss:2, bodyLoss:1, hairTension:60, lock:'mm',keepPitch:false});
+// Bow hair as a taut thread of fixed length; it does not enter the Schelleng bounds.
+export const HAIR_LENGTH=640;
 export const GF = .00980665;
 const clamp = (x,a,b) => Math.min(b, Math.max(a,x));
 export function sanitize(input={}) {
   const s = {...DEFAULT};
   if (Object.hasOwn(STRINGS,input.string)) s.string=input.string;
-  const fields={semitone:[0,24],distance:[2,65],speed:[0,60],force:[0,1000],length:[300,350],tension:[25,100],friction:[.15,1.2],resistance:[2,40],fingerLoss:[1,4],bodyLoss:[.5,5]};
+  const fields={semitone:[0,24],distance:[2,65],speed:[0,60],force:[0,1000],length:[300,350],tension:[25,100],friction:[.15,1.2],resistance:[2,40],fingerLoss:[1,4],bodyLoss:[.5,5],hairTension:[30,90]};
   for(const [k,[a,b]] of Object.entries(fields)) if(input[k]!==null && input[k]!=='' && Number.isFinite(Number(input[k]))) s[k]=clamp(Number(input[k]),a,b);
   s.semitone=Math.round(s.semitone);
   s.distance=Math.min(s.distance,s.length*2**(-s.semitone/12)*.45);
@@ -28,7 +30,8 @@ export function calculate(input) {
   const maximum=2*z*speed/(beta*s.friction)/GF;
   const state=s.speed===0?'stopped':minimum>=maximum?'none':s.force<minimum?'light':s.force>maximum?'heavy':'stable';
   const amplitude=s.speed===0?0:speed/(8*frequency*beta); // ideal transverse peak amplitude, m
-  return {...s,openFrequency,frequency,vibratingLength:length*1000,beta,z,loss,effectiveR,minimum,maximum,state,amplitude:amplitude*1000,ratio:s.speed===0?0:maximum/minimum,stick:1-beta,slip:beta};
+  const sink=f=>f*GF*(HAIR_LENGTH/1000)/(4*s.hairTension)*1000; // mid-bow hair deflection, mm
+  return {...s,openFrequency,frequency,vibratingLength:length*1000,beta,z,loss,effectiveR,minimum,maximum,state,amplitude:amplitude*1000,ratio:s.speed===0?0:maximum/minimum,stick:1-beta,slip:beta,hairSink:sink(s.force),hairSinkMin:sink(minimum),hairSinkMax:sink(maximum)};
 }
 export function changePitch(input,semitone) {
   const before=calculate(input), s={...before,semitone};

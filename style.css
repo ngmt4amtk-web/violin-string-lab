@@ -16,3 +16,7 @@
 
 @media(min-width:671px){.status-line{flex-wrap:wrap}}
 @media(max-width:670px){.status-line .note-badge{width:auto;height:auto;border:0;border-radius:0;font-family:inherit;font-size:12px}.status-line h3{font-size:14px}.overview .motion-caption strong{font-size:9px}.overview .motion-caption span{font-size:8px}}
+
+/* 弓の毛の張り：小図は横にはみ出さないよう、幅を100%に抑える */
+#hair-figure{margin:12px 0 2px;min-width:0}
+#hair-figure svg{width:100%;max-width:360px;display:block;height:auto}
